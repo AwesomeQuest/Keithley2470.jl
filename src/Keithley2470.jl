@@ -76,8 +76,18 @@ function initialize_keithley()
 		return nothing
 	end
 	@info "Found instruments:" instruments
-	length(instruments) > 1 && @warn "More than one instrument found, connecting to first one"
-	Instruments.connect!(rm, uwSource, instruments[1])
+	if length(instruments) > 1
+
+		@warn "More than one instrument found, please select one"
+		for (ind, instr) in enumerate(instruments)
+			println("Number ", ind, ": ", instr)
+		end
+		print("Number: ")
+		input = readline() |> x->parse(Int,x)
+		Instruments.connect!(rm, uwSource, instruments[input])
+	else
+		Instruments.connect!(rm, uwSource, instruments[1])
+	end
 	id = query(uwSource, "*IDN?")
 	@info "Instrument ID: $id"
 
@@ -218,7 +228,7 @@ end
 function (@main)(ARGS)
 
 	# Can be :datetime, :seconds, or :nanoseconds
-	timestamp_mode = :datetime
+	timestamp_mode = :seconds
 
 	global sleep_interupt_interval
 	## Parse ARGS
@@ -360,7 +370,7 @@ function (@main)(ARGS)
 
 				global monitor_is_monitoring
 				global iv_is_sweeping
-				global iv_cancel_sweep
+				global iv_sweep_cancel
 				if !iv_is_sweeping[] && ig.Button("Start Sweep", (250WINSCALE, 30WINSCALE)) && !monitor_is_monitoring[]
 					ig.OpenPopup("start_sweep_popup")
 				end
@@ -374,7 +384,7 @@ function (@main)(ARGS)
 					ig.SeparatorText("Are you sure you want to start a sweep?")
 					ig.SeparatorText("Starting a sweep will erase the previous sweep from memory.")
 					if ig.Button("I'm sure I want to permanently erase data and start a new sweep.")
-						iv_cancel_sweep = false
+						iv_sweep_cancel[] = false
 						errormonitor(
 							Threads.@spawn keithley_sweep(
 								iv_min_volts, iv_max_volts,
@@ -385,8 +395,9 @@ function (@main)(ARGS)
 					end
 					ig.EndPopup()
 				end
-				if iv_is_sweeping[] && ig.Button("Cancel Sweep##iv_sweep")
-					iv_cancel_sweep = true
+				global iv_sweep_cancel
+				if iv_is_sweeping[] && ig.Button("Cancel Sweep##iv_sweep", (250WINSCALE, 30WINSCALE))
+					iv_sweep_cancel[] = true
 				end
 				end #= @cstatic iv_min_volts=Cdouble(-1) iv_max_volts=Cdouble(1) iv_sweep_time=Cdouble(0) iv_init_voltage=Cdouble(0) maxcurrent=Cdouble(1) iv_sweep_dir=Int32(1) begin =#
 
@@ -417,7 +428,7 @@ function (@main)(ARGS)
 					ImPlot.SetupAxes("Voltage [V]", "Current [A]", xflags, yflags)
 					if !isempty(iv_currs)
 						@lock plotlock begin
-							ImPlot.PlotLine("data", iv_currs, iv_volts)
+							ImPlot.PlotLine("data", iv_volts, iv_currs)
 						end
 					end
 					ImPlot.EndPlot()
